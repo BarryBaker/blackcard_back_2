@@ -64,7 +64,7 @@ def full(a, board, level=0):
             return f(0)[0] | f(1)[0] | f(20)[0] | f(21)[0], None
 
         if np.array_equal(rank_cnt, [2, 2]):
-            return f(10)[0]
+            return f(10)[0], None
 
         if np.array_equal(rank_cnt, [2, 1, 1, 1]):
             if level == 1:

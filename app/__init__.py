@@ -171,6 +171,7 @@ def construct_GT_db():
 with app.app_context():
     db.create_all()
     # read_csv()
+
     # construct_GT_db()
 
 
@@ -179,3 +180,11 @@ api.add_resource(endpoints.save_tree, "/save_tree")
 api.add_resource(endpoints.construct_base_table, "/construct_base_table")
 api.add_resource(endpoints.get_base_table, "/get_base_table")
 api.add_resource(endpoints.generate_joined, "/generate_joined")
+api.add_resource(
+    endpoints.construct_base_tables_for_train,
+    "/construct_base_tables_for_train",
+)
+api.add_resource(endpoints.pick_hand, "/pick_hand")
+
+api.add_resource(endpoints.get_cards, "/get_cards")
+api.add_resource(endpoints.card_list_suits, "/card_list_suits")

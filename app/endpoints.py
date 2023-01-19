@@ -4,6 +4,7 @@ from flask import Response
 
 import pandas as pd
 import numpy as np
+import random
 
 import pickle
 import os
@@ -18,6 +19,23 @@ from functools import reduce
 from app.models import GT, Saved
 from app import db
 from sqlalchemy import or_, and_
+
+sort_order = {
+    "FOLD": 0,
+    "CHECK": 1,
+    "CALL": 2,
+    "MIN": 3,
+    "RAISE20": 3.5,
+    "RAISE25": 4,
+    "RAISE40": 5,
+    "RAISE33": 6,
+    "RAISE50": 7,
+    "RAISE66": 7.5,
+    "RAISE75": 8,
+    "RAISE100": 9,
+    "RAISE": 10,
+    "ALLIN": 11,
+}
 
 wd = os.path.dirname(os.path.realpath(__file__))
 gto = "/Users/barrybaker/Documents/easygto/easygto_back/app/GTO/"
@@ -42,6 +60,7 @@ class get_boards(Resource):
     def post(self):
 
         situation = request.json["situation"]
+
         hero = request.json["hero"]
         boardType = request.json["boardType"]
         layer = request.json["layer"]
@@ -266,6 +285,70 @@ class get_base_table(Resource):
         }
 
 
+class get_cards(Resource):
+    def post(self):
+        js = request.json
+        bc = best_cuts(base_table["base_cols"], js["exc"], js["inc"])
+        cardlist = bc[3]
+        base_table["cardlist"] = cardlist
+        action_list = list(np.unique(base_table["base_cols"].action))
+        action_list.sort(key=lambda val: sort_order[val])
+        a = cardlist.to_frame()
+        for i in range(0, 4):
+            a[i] = a.index.str[i * 2 : i * 2 + 2]
+        range_string = a.drop("action", axis=1)
+        range_string = range_string.applymap(lambda x: card_values[x])
+        base_table["cardlist2d"] = range_string.values
+        ranklist2d = o.ranks(range_string.values)
+
+        ranklist2d_uniq, indicies = np.unique(
+            ranklist2d, axis=0, return_inverse=True
+        )
+
+        result = []
+        for rowNr in range(ranklist2d_uniq.shape[0]):
+            item = {
+                "ranks": o.cardRanks(ranklist2d_uniq[rowNr, :]).tolist(),
+                "action": {},
+            }
+            rowsize = cardlist[indicies == rowNr].size
+            for action in action_list:
+                item["action"][action] = (
+                    (cardlist[indicies == rowNr] == action).sum()
+                    / rowsize
+                    * 100
+                )
+            result.append(item)
+
+        return {"cardlist": result}
+
+
+class card_list_suits(Resource):
+    def post(self):
+
+        js = request.json
+        cards = js["cards"]
+        ranks2d = o.ranks(base_table["cardlist2d"])
+        rankToFind = o.ranks(Board([i + "s" for i in cards]).np)
+
+        action_list = list(np.unique(base_table["base_cols"].action))
+        action_list.sort(key=lambda val: sort_order[val])
+
+        result = {}
+        for action in action_list:
+            ranks2dFiltered = base_table["cardlist2d"][
+                base_table["cardlist"] == action
+            ][
+                np.all(
+                    ranks2d[base_table["cardlist"] == action]
+                    == rankToFind,
+                    axis=1,
+                )
+            ]
+            result[action] = o.suits(o.suit(ranks2dFiltered)).tolist()
+        return {"card_ranks": cards, "suits": result}
+
+
 class save_tree(Resource):
     def post(self):
         situ = request.json["situation"]
@@ -410,7 +493,7 @@ class generate_joined(Resource):
                     Saved.pos2 == situ["position_2"],
                     Saved.scenario == situ["scenario"],
                     Saved.board == situ["board"],
-                    Saved.line == situ["line"] + "JO",
+                    Saved.line == situ["line"] + "-JO",
                     Saved.hero == hero,
                 )
             ).first():
@@ -424,7 +507,7 @@ class generate_joined(Resource):
                         pos2=situ["position_2"],
                         scenario=situ["scenario"],
                         board=situ["board"],
-                        line=situ["line"] + "JO",
+                        line=situ["line"] + "-JO",
                         hero=hero,
                         tree=pickle.dumps(None),
                     )
@@ -432,7 +515,7 @@ class generate_joined(Resource):
 
             db.session.commit()
 
-        situ["line"] = situ["line"] + "JO"
+        situ["line"] = situ["line"] + "-JO"
         for i in a.columns:
             res = a[i]
             res.name = "weight"
@@ -440,3 +523,77 @@ class generate_joined(Resource):
                 f"{gto_joined}{'_'.join([str(situ[j]) for j in situ])}_{hero}_{i}.csv"
             )
         return None
+
+
+class construct_base_tables_for_train(Resource):
+    def post(self):
+        situation = request.json["situation"]
+        boardlines = request.json["boardlines"]
+        base_tables = {}
+        for boardline in boardlines:
+            situ = situation | boardline
+            file_name = gto + "_".join([str(situ[i]) for i in situ]) + "_"
+
+            file_name_joined = (
+                gto_joined + "_".join([str(situ[i]) for i in situ]) + "_"
+            )
+
+            action_filenames = glob.glob(file_name + "*.csv")
+
+            action_filenames_joined = glob.glob(file_name_joined + "*.csv")
+            actions = {}
+            if len(action_filenames) > 0:
+                for i in action_filenames:
+                    actions[
+                        i.replace(file_name, "").replace(".csv", "")
+                    ] = pd.read_csv(i, index_col="combo")
+                for i in actions:
+                    actions[i] = actions[i][actions[i]["weight"] != 0]
+            else:
+                for i in action_filenames_joined:
+                    actions[
+                        i.replace(file_name_joined, "").replace(".csv", "")
+                    ] = pd.read_csv(i, index_col="combo")
+                for i in actions:
+                    actions[i] = actions[i][actions[i]["weight"] != 0]
+            emptydf = pd.DataFrame({"weight": []})
+            emptydf.index.name = "combo"
+
+            a = reduce(
+                lambda df, key: df.join(
+                    actions[key], how="outer", rsuffix="_" + key
+                ),
+                [emptydf] + list(actions.keys()),
+            )
+            a.drop("weight", axis=1, inplace=True)
+
+            a.columns = [
+                i.split("_")[2] for i in a.columns
+            ]  # str.lstrip("weight_")
+
+            a.fillna(0, inplace=True)
+            a = a[a.sum(axis=1) > 40]
+
+            # base_table["soft_actions"] = a.copy()
+            a["action"] = a.idxmax(axis=1)
+            a = a[["action"]]
+            base_tables[(boardline["board"], boardline["line"])] = a
+        base_table["train"] = base_tables
+        return "done"
+
+
+class pick_hand(Resource):
+    def get(self):
+
+        boardline, table = random.choice(list(base_table["train"].items()))
+        hand = table.sample().to_dict(orient="dict")["action"]
+
+        options = list(np.unique(table.action))
+        options.sort(key=lambda val: sort_order[val])
+        return {
+            "board": boardline[0],
+            "line": boardline[1],
+            "hand": list(hand.keys())[0],
+            "result": list(hand.values())[0],
+            "options": options,
+        }
