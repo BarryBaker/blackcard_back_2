@@ -33,38 +33,38 @@ gto_joined = (
 )
 
 
-def read_csv():
-    for filename in os.listdir(wd + "/saved/"):
-        name_as_list = filename.replace(".obj", "").split("_")
-        file_path = os.path.join(wd + "/saved/", filename)
+# def read_csv():
+#     for filename in os.listdir(wd + "/saved/"):
+#         name_as_list = filename.replace(".obj", "").split("_")
+#         file_path = os.path.join(wd + "/saved/", filename)
 
-        # print(filename)
-        filehandler = open(file_path, "rb")
-        try:
-            saved_tree = pickle.load(filehandler)
-        except:
-            print(filename)
+#         # print(filename)
+#         filehandler = open(file_path, "rb")
+#         try:
+#             saved_tree = pickle.load(filehandler)
+#         except:
+#             print(filename)
 
-        filehandler.close()
-        # print(saved_tree)
-        try:
-            db.session.add(
-                Saved(
-                    stake=name_as_list[0],
-                    stack=name_as_list[1],
-                    players=name_as_list[2],
-                    pos1=name_as_list[3],
-                    pos2=name_as_list[4],
-                    scenario=name_as_list[5],
-                    board=name_as_list[6],
-                    line=name_as_list[7],
-                    hero=name_as_list[8],
-                    tree=pickle.dumps(saved_tree),
-                )
-            )
-        except IndexError:
-            print(filename, name_as_list)
-        db.session.commit()
+#         filehandler.close()
+#         # print(saved_tree)
+#         try:
+#             db.session.add(
+#                 Saved(
+#                     stake=name_as_list[0],
+#                     stack=name_as_list[1],
+#                     players=name_as_list[2],
+#                     pos1=name_as_list[3],
+#                     pos2=name_as_list[4],
+#                     scenario=name_as_list[5],
+#                     board=name_as_list[6],
+#                     line=name_as_list[7],
+#                     hero=name_as_list[8],
+#                     tree=pickle.dumps(saved_tree),
+#                 )
+#             )
+#         except IndexError:
+#             print(filename, name_as_list)
+#         db.session.commit()
 
 
 def construct_GT_db():
