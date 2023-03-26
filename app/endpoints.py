@@ -239,6 +239,7 @@ class construct_base_table(Resource):
         # a = pickle.loads(a.table)
         # Try filter out when action sum is less than 50. That hand may should not be in the mix in the first place
         a = a[a.sum(axis=1) > 40]
+        # print(a)
 
         # base_table["soft_actions"] = a.copy()
         a["action"] = a.idxmax(axis=1)
